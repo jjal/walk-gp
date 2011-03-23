@@ -61,7 +61,7 @@ namespace WalkControl
 		public object Clone()
 		{
 			var c = new Chromosome();
-			
+			return c;
 		}
 
 		#endregion
