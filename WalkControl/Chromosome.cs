@@ -8,10 +8,17 @@ namespace WalkControl
 	public class Chromosome : ICloneable
 	{
 		Node Genome { get; set; }
-
-		public Chromosome()
+		protected int Seed
 		{
-			
+			get
+			{
+				return (int)(DateTime.Now.Ticks % Int32.MaxValue);
+			}
+		}
+
+		public Chromosome(Node Genome)
+		{
+			this.Genome = Genome;
 		}
 
 		public string Serialize(Dictionary<string, int> State)
@@ -36,31 +43,44 @@ namespace WalkControl
 			
 			if (node as Conditional != null)
 			{
-				if ((node as Conditional).Evaluate(State))
+				if ((node as Conditional).Evaluate(State) && State != null)
 					foreach (var n in Enumerate(State, (node as Conditional).Success))
 						yield return n;
-				else
+				if (!(node as Conditional).Evaluate(State) && State != null)
 					foreach (var n in Enumerate(State, (node as Conditional).Failure))
 						yield return n;
 			}
 		}
 
-		public Chromosome Mutate()
+		public Chromosome Mutate(int PercentChance)
 		{
-			return new Chromosome();
+			var c = new Chromosome(Genome.Clone());
+			foreach (var n in c.Enumerate(null))
+			{
+				if (new Random(Seed).Next(100) > PercentChance)
+				{
+					//can add a child
+					//can lose a child
+					//can change an action (this is like add and lose)
+					//can mutate a functor
+				}
+			}
+			return c;
 		}
 
 		public Chromosome Crossover(Chromosome partner)
 		{
-			return new Chromosome();
+			var c = Genome.Clone();
+			return c;
 		}
 
 
 		#region ICloneable Members
 
-		public object Clone()
+		public Node Clone()
 		{
 			var c = new Chromosome();
+			c.Genome = Genome.Clone();
 			return c;
 		}
 
