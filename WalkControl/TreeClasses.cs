@@ -40,13 +40,13 @@ namespace WalkControl
 		public Node Success { get; set; }
 		public Node Failure { get; set; }
 		public abstract bool Evaluate(Dictionary<string, int> State);
-		public Func<Dictionary<string, int>, bool> Condition
+		public Func<Dictionary<int, int>, bool> Condition
 		{
 			get;
 			protected set;
 		}
 
-		public Conditional(Func<Dictionary<string, int>, bool> condition)
+		public Conditional(Func<Dictionary<int, int>, bool> condition)
 		{
 			Condition = condition;
 		}
