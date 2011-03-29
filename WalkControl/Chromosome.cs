@@ -8,7 +8,16 @@ namespace WalkControl
 {
 	public class Chromosome : ICloneable
 	{
-		private int NewActionChance = 50;
+		
+		/// <summary>
+		/// 
+		/// </summary>
+		private const int NewActionChance = 50;
+		/// <summary>
+		/// Size of the state dictionary. 
+		/// </summary>
+		private const int StateSize = 10;
+		private int ServoMax;
 		Node Genome { get; set; }
 		protected int Seed
 		{
@@ -30,7 +39,7 @@ namespace WalkControl
 
 		public IEnumerable<Node> Enumerate()
 		{
-			foreach(var n in Enumerate(null))
+			foreach (var n in Enumerate(null))
 				yield return n;
 		}
 
@@ -48,7 +57,7 @@ namespace WalkControl
 			foreach (var c in node.Children)
 				foreach (var n in Enumerate(State, c))
 					yield return n;
-			
+
 			if (node as Conditional != null)
 			{
 				if ((node as Conditional).Evaluate(State) && State != null)
@@ -96,14 +105,21 @@ namespace WalkControl
 
 		private Func<Dictionary<int, int>, bool> CreateCondition()
 		{
-			var o = Expression.Parameter(typeof(Dictionary<string,int>), "t");
-			var val = 0; //constant
-			var prop = 0;
-			Expression<Func<Dictionary<int, int>, bool>> expression = Expression.Lambda<Func<Dictionary<int, int>, bool>>(
-				Expression.Equal(
-					Expression.ArrayIndex(o, prop), Expression.Constant(val)),
-				o);
+			//holy shit i'm using expression builders!
+			var state = Expression.Parameter(typeof(Dictionary<string,int>), "state");
+			var result = Expression.Parameter(typeof(int), "result");
 
+			var index = new Random(Seed).Next(StateSize);
+			var max = new Random(Seed).Next(ServoMax);
+			//Expression.Property(valueBag, "Item", key)
+			var stateAccess = Expression.Block(
+				new[] { result },               //make the result a variable in scope for the block           
+				Expression.Assign(result, Expression.Property(state, "Item", Expression.Constant(index))),
+				result                          //last value Expression becomes the return of the block 
+			);
+
+			var comparison = Expression.GreaterThanOrEqual(stateAccess, Expression.Constant(max));
+			var expression = Expression.Lambda<Func<Dictionary<int,int>,bool>>(comparison,state,result);
 			return expression.Compile();
 		}
 
@@ -124,8 +140,8 @@ namespace WalkControl
 			var target = Enumerate().ElementAt(new Random(Seed).Next(nodes2));
 			var parent1 = Enumerate().FirstOrDefault(n => n.Children.Contains(selection));
 			var parent2 = Enumerate().FirstOrDefault(n => n.Children.Contains(target));
-			parent1.AddChild(target,parent1.Children.IndexOf(selection));
-			parent2.AddChild(selection,parent2.Children.IndexOf(target));
+			parent1.AddChild(target, parent1.Children.IndexOf(selection));
+			parent2.AddChild(selection, parent2.Children.IndexOf(target));
 			parent1.RemoveChild(selection);
 			parent2.RemoveChild(target);
 		}
