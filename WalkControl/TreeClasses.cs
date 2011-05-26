@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Linq.Expressions;
+using System.Runtime.Serialization;
 
 namespace WalkControl
 {
@@ -30,23 +32,35 @@ namespace WalkControl
 
 		#region ICloneable Members
 
-		public abstract Node Clone();
+		public abstract object Clone();
 
 		#endregion
+
+		public virtual void Mutate()
+		{
+		}
+
+		public abstract string Serialize();
 	}
 
 	public class Conditional : Node
 	{
 		public Node Success { get; set; }
 		public Node Failure { get; set; }
-		public abstract bool Evaluate(Dictionary<string, int> State);
-		public Func<Dictionary<int, int>, bool> Condition
+		public virtual bool Evaluate(Dictionary<int, int> State) { return ConditionFunc.Invoke(State); }
+		private Expression<Func<Dictionary<int, int>, bool>> condition;
+		public Expression<Func<Dictionary<int, int>, bool>> Condition
+		{
+			get { return condition; }
+			protected set { condition = value; ConditionFunc = condition.Compile(); }
+		}
+		public Func<Dictionary<int, int>, bool> ConditionFunc
 		{
 			get;
 			protected set;
 		}
 
-		public Conditional(Func<Dictionary<int, int>, bool> condition)
+		public Conditional(Expression<Func<Dictionary<int, int>, bool>> condition)
 		{
 			Condition = condition;
 		}
@@ -56,15 +70,21 @@ namespace WalkControl
 			var n = new Conditional(Condition);
 			foreach (var c in Children)
 			{
-				n.AddChild(c.Clone());
+				n.AddChild(c.Clone() as Node);
 			}
 			return n;
+		}
+
+		public override string Serialize()
+		{
+			//not really relevent for condition
+			return null;
 		}
 	}
 
 	public class Action : Node
 	{
-		Dictionary<int, int> Angles
+		public Dictionary<int, int> Angles
 		{
 			get;
 			protected set;
@@ -80,12 +100,12 @@ namespace WalkControl
 			var n = new Action(Angles);
 			foreach (var c in Children)
 			{
-				c.AddChild(c.Clone());
+				c.AddChild(c.Clone() as Node);
 			}
 			return n;
 		}
 
-		public string Serialize()
+		public override string Serialize()
 		{
 			var s = new StringBuilder();
 			foreach (var p in Angles)
@@ -96,12 +116,7 @@ namespace WalkControl
 				s.Append(":");
 				s.Append(p.Value);
 			}
-			return s;
-		}
-
-		internal void Mutate()
-		{
-			throw new NotImplementedException();
+			return s.ToString();
 		}
 	}
 }

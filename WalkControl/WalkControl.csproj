@@ -53,6 +53,7 @@
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="Simulator.cs" />
     <Compile Include="TreeClasses.cs" />
     <Compile Include="Nodes.cs" />
     <Compile Include="Program.cs" />
