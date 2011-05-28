@@ -15,12 +15,12 @@ namespace WalkControl
 			Children = new List<Node>();
 		}
 
-		public void AddChild(Node n)
+		public virtual void AddChild(Node n)
 		{
 			Children.Add(n);
 		}
 
-		public void AddChild(Node n, int index)
+		public virtual void AddChild(Node n, int index)
 		{
 			Children.Insert(index, n);
 		}
@@ -47,6 +47,11 @@ namespace WalkControl
 	{
 		public Node Success { get; set; }
 		public Node Failure { get; set; }
+		public new List<Node> Children
+		{
+			get { return base.Children; }
+			set { throw new NotImplementedException(); }
+		}
 		public virtual bool Evaluate(Dictionary<int, int> State) { return ConditionFunc.Invoke(State); }
 		private Expression<Func<Dictionary<int, int>, bool>> condition;
 		public Expression<Func<Dictionary<int, int>, bool>> Condition
@@ -61,18 +66,53 @@ namespace WalkControl
 		}
 
 		public Conditional(Expression<Func<Dictionary<int, int>, bool>> condition)
+			: base()
 		{
 			Condition = condition;
 		}
 
+
 		public override object Clone()
 		{
 			var n = new Conditional(Condition);
-			foreach (var c in Children)
-			{
-				n.AddChild(c.Clone() as Node);
-			}
+			if (Success != null)
+				n.Success = Success.Clone() as Node;
+			if (Failure != null)
+				n.Failure = Failure.Clone() as Node;
 			return n;
+		}
+
+		/// <summary>
+		/// Randomly add this node to success or failure trees
+		/// </summary>
+		/// <param name="n"></param>
+		/// <param name="index"></param>
+		public override void AddChild(Node n)
+		{
+			if (new Random((int)DateTime.Now.Ticks % Int32.MaxValue).Next(100) > 50)
+			{
+				if (Success == null)
+					Success = n;
+				else
+					Success.AddChild(n);
+			}
+			else
+			{
+				if (Failure == null)
+					Failure = n;
+				else
+					Failure.AddChild(n);
+			}
+		}
+
+		/// <summary>
+		/// Randomly add this node to success or failure trees
+		/// </summary>
+		/// <param name="n"></param>
+		/// <param name="index"></param>
+		public override void AddChild(Node n, int index)
+		{
+			AddChild(n);
 		}
 
 		public override string Serialize()
@@ -91,13 +131,14 @@ namespace WalkControl
 		}
 
 		public Action(Dictionary<int, int> Angles)
+			: base()
 		{
 			this.Angles = Angles;
 		}
 
 		public override object Clone()
 		{
-			var n = new Action(Angles);
+			var n = new Action(new Dictionary<int, int>(Angles));
 			foreach (var c in Children)
 			{
 				c.AddChild(c.Clone() as Node);

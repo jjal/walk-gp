@@ -2,96 +2,145 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
 
 namespace WalkControl
 {
 	public class Simulator
 	{
-		public SortedDictionary<Chromosome,int> Population { get; set; }
-		public int MutatePercentChance { get; set; }		
-		public int PopulationSize = 20;
-		public int CullPercent = 10;
-		public int MutationPercent = 10;
-		public int CrossoverPercent = 90;
+		public Dictionary<int, Chromosome> Population { get; set; }
+		public Dictionary<int, int> Scores { get; set; }
+		public const int PopulationSize = 20;
+		public const int CullPercent = 25;
+		public const int MutationPercent = 90;
+		public const int MutationSeverity = 50;
+		public const int CrossoverPercent = 10;
 		protected Random Random;
+		private const int RunLength = 2000;
 		public Simulator()
 		{
-			Population = new List<Chromosome>();
-			Scores = new SortedDictionary<int, int>();
-			for(int i=0;i<PopulationSize;i++)
-				Population.Add(new Chromosome(Chromosome.CreateOriginAction()));
-			Random = new Random(int)(DateTime.Now.Ticks % Int32.MaxValue);
+			Population = new Dictionary<int, Chromosome>();
+			Scores = new Dictionary<int, int>();
+			Trace.WriteLine("Sim setting up, creating " + PopulationSize + " genomes.");
+			Random = new Random((int)DateTime.Now.Ticks % Int32.MaxValue);
+			for (int i = 0; i < PopulationSize; i++)
+			{
+				var c = new Chromosome(Chromosome.CreateOriginAction());
+				Population.Add(c.GetHashCode(), c);
+			}
+			Trace.WriteLine("Sim simulator ready to go.");
 		}
-		
+
 		/// <summary>
 		/// Go through and implement all the evolutionary functions on the population 
 		/// </summary>
 		public void Tick()
 		{
+			Trace.WriteLine("Sim Tick... Population size: " + Population.Count);
+			Scores.Clear();
 			//apply fitness measure to population
 			//foreach genome
-			foreach(var g in Population.Keys)
+			foreach (var g in Population)
 			{
 				//apply fitness, store score
-				Population[g] = JudgeFitness(g);
+				Scores[g.Key] = JudgeFitness(g.Value);
+				Trace.WriteLine(String.Format("Sim genome judged: " + g.Value + " - score: " + Scores[g.Key]));
 			}
-			//sort scores
-			Population = Population.OrderByDescending(kv=>kv.Value);
-			
+
+			//sort population by scores
+			Population = Population.OrderByDescending(kv => Scores[kv.Key]).ToDictionary(kv => kv.Key, kv => kv.Value);
+
 			//select best genome to make sure it's left in the population
-			var best = Population.Keys.First();
+			var best = Population.Values.First();
 			//select worst genome (for variety)
-			var worst = Population.Keys.Last();
-			
-			//remove bottom CullPercent + 2 for the best and worst which we'll add back later
-			Population = Population.Take((Population.Count()*CullPercent/100)+2);
+			var worst = Population.Values.Last();
+			Trace.WriteLine("Sim culling population.. ");
+			//remove bottom CullPercent for the best and worst which we'll add back later
+			Population = Population.Take((Population.Count() * (100 - CullPercent) / 100) - 2).ToDictionary(kv => kv.Key, kv => kv.Value);
 			//add back the worst since it would have been culled
-			Population.Add(worst,0); 
-			
+			Population.Add(worst.GetHashCode(), worst);
+
+			Trace.WriteLine("Sim cull done, new size: " + Population.Count);
+
 			//create a new generation of genomes
-			var NextGen = new SortedDictionary<Chromosome,int>();
-			
+			var NextGen = new Dictionary<int, Chromosome>();
+
+			Trace.WriteLine("Sim mutating " + MutationPercent + "% of population");
 			//mutate MutationPercent of the new generation
 			//get a random MutationPercent number of genomes
-			while (NextGen.Count < MutationPercent*Population.Count/100)
+			var NumGenomesToMutate = MutationPercent * Population.Count / 100;
+			while (NextGen.Count < NumGenomesToMutate)
 			{
-				var c = Population.ElementAt(Random.Next(Population.Count));
-				NextGen[c]=0;//add it to next generation
-				Population.Remove(c);//remove it from current generation
+				var c = Population.ElementAt(Random.Next(Population.Count)).Value;
+				var mutated = c.Mutate(MutationSeverity);
+				NextGen[mutated.GetHashCode()] = mutated;//add it to next generation
+				Population.Remove(c.GetHashCode());//remove it from current generation
 			}
-			
-			//mutate these genomes
-			foreach(var g in NextGen)
-				g.Key.Mutate();
-			
+
+			Trace.WriteLine("Sim mutation done. New generation now has " + NextGen.Count + " genomes.");
+
+			Trace.WriteLine("Sim beginning crossovers: ");
 			//crossover genomes remaining in the old population
-			foreach(var g in Population)
+			//After every genome has had a crack at reproducing, we need to maintain the population size, which we will do by round-robin weighted random crossovers.
+			for (var i = 0; NextGen.Count < (PopulationSize - 1); i = i < Population.Count ? i++ : 0)
 			{
-				var partner = g.Value;
-				var partnerIdex = 0;
-				do 
-				{
-					partnerIndex = Random.Next(Population.Count); // get a random partner
-					partner = Population[partnerIndex];
-					//if this random number check succeeds the partnering will go ahead
-					//probability is linear, inversely proportional to distance from spot 0 
-					//the bottom genome will never be selected as a second partner but will 
-					//get one turn at being the primary
-				} while(partner == g && Random.Next(100) < (partnerIndex*-1*(100/Population.Count) + 100));
-				//cross the genomes over and add the child to the next generation
-				NextGen.Add(g.Value.Crossover(partner));
+				var popEntry = Population.ElementAt(i);
+				var partner = Population[GetWeightedRandomPartner(Population,popEntry.Key)];
+				Trace.Write("[" + Scores[popEntry.Key] + "," + Scores[partner.GetHashCode()] + "] ");
+				//cross the genomes over and add the children to the next generation
+				var children = popEntry.Value.Crossover(partner);
+				foreach (var c in children)
+					if (!NextGen.ContainsKey(c.GetHashCode())) //possible for this to happen on small genomes
+						NextGen.Add(c.GetHashCode(), c);
 			}
+			Trace.WriteLine(" .. crossovers complete. NextGen now has " + NextGen.Count + " genomes.");
 			//add back the top genome from the last gen (elitism)
-			NextGen.Add(best,0);
-			
+			if (!NextGen.ContainsKey(best.GetHashCode()))
+				NextGen.Add(best.GetHashCode(), best);
+
+
 			//we should now have a completely mutated, crossed-over new generation. replace!
-			Population = NextGen;
+			Population.Clear();
+			foreach (var kv in NextGen)
+				Population.Add(kv.Key,kv.Value);
+			Trace.WriteLine("Sim tick complete. Population size: " + Population.Count);
+			Trace.WriteLine("");
 		}
-		
-		protected int JudgeFitness (Chromosome g)
+
+		protected int GetWeightedRandomPartner(Dictionary<int,Chromosome> population, int principalId)
 		{
-			//run simulation for N ticks
+			var partnerId = principalId;
+			var partnerIndex = 0;
+			do
+			{
+				partnerIndex = Random.Next(population.Count); // get a random partner
+				partnerId = population.ElementAt(partnerIndex).Key;
+				//if this random number check succeeds the partnering will go ahead
+				//probability is linear, inversely proportional to distance from spot 0 
+				//the bottom genome will never be selected as a second partner but will 
+				//get one turn at being the primary
+			} while (partnerId == principalId && Random.Next(100) < (partnerIndex * -1 * (100 / Population.Count) + 100));
+			return partnerId;
+		}
+
+		protected int JudgeFitness(Chromosome g)
+		{
+			Trace.WriteLine("Judging fitness. Beginning run for Chromosome " + g.GetHashCode());
+			//run simulation
+			var robot = new Emulator();
+
+			robot.DoRun(g, RunLength);
+
 			//judge score
+			var gyro = robot.GetGyroState();
+			Trace.WriteLine(String.Format("Judging fitness. Run ended. Gyro state: {0}, {1}, {2}.", gyro[0], gyro[1], gyro[2]));
+
+			var tilt = Math.Abs(gyro[0]) + Math.Abs(gyro[1]);
+			if (tilt < 1) //floor tilt at 1 so  there arn't DbZ issues
+				tilt = 1;
+			//we're trying to judge closeness to 0 for the x and y but height for z
+			var score = (100 / tilt) * gyro[2];
+			return score;
 		}
 	}
 }
