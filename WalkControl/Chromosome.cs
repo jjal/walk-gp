@@ -51,17 +51,15 @@ namespace WalkControl
 		/// <summary>
 		/// Seed for random operations
 		/// </summary>
-		protected int Seed
+		protected Random Random
 		{
-			get
-			{
-				return (int)(DateTime.Now.Ticks % Int32.MaxValue);
-			}
+			get; set;
 		}
 
 		public Chromosome(Node Genome)
 		{
 			this.Genome = Genome;
+			Random = new Random((int)(DateTime.Now.Ticks % Int32.MaxValue));
 		}
 
 		public Chromosome()
@@ -80,12 +78,34 @@ namespace WalkControl
 				yield return n;
 		}
 
+		/// <summary>
+		/// Will enumerate a list of actions based on the state, calculating based
+		/// on the conditionals in the tree
+		/// </summary>
+		/// <param name="State">
+		/// A <see cref="Dictionary<System.Int32, System.Int32>"/>
+		/// </param>
+		/// <returns>
+		/// A <see cref="IEnumerable<Action>"/>
+		/// </returns>
 		public IEnumerable<Node> Enumerate(Dictionary<int, int> State)
 		{
 			foreach (var a in Enumerate(State, Genome))
 				yield return a;
 		}
 
+		/// <summary>
+		/// Recursive enumeration of actions using conditions considering current state
+		/// </summary>
+		/// <param name="State">
+		/// A <see cref="Dictionary<System.Int32, System.Int32>"/>
+		/// </param>
+		/// <param name="node">
+		/// A <see cref="Node"/>
+		/// </param>
+		/// <returns>
+		/// A <see cref="IEnumerable<Node>"/>
+		/// </returns>
 		public IEnumerable<Node> Enumerate(Dictionary<int, int> State, Node node)
 		{
 			if (node as Action != null)
