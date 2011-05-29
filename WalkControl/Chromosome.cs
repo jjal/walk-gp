@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Linq.Expressions;
+using System.Diagnostics;
 
 namespace WalkControl
 {
@@ -35,19 +36,35 @@ namespace WalkControl
 		/// <summary>
 		/// chance to mutate a node
 		/// </summary>
-		private int MutateChanceMutate = 50;
+		private int MutateChanceMutate = 60;
 		/// <summary>
 		/// chance to add a node
 		/// </summary>
-		private int MutateChanceAdd = 50; //add > lose so they'll grow over time
+		private int MutateChanceAdd = 60; //add > lose so they'll grow over time
 		/// <summary>
 		/// chance to mutate an angle (if already mutating the action)
 		/// </summary>
-		private int MutateActionAngle = 50;
+		private int MutateActionAngle = 60;
+		/// <summary>
+		/// Genomes will not mutate larger than this. 
+		/// </summary>
+		private int MutateMaxSize = 50;
+		/// <summary>
+		/// Genomes will not mutate smaller than this.
+		/// </summary>
+		private int MutateMinSize = 4;
+		/// <summary>
+		/// When mutation an Action, chance that an angle definition will be added to it
+		/// </summary>
+		private int MutateActionAddAngle = 50;
+		/// <summary>
+		/// When mutating an Action, chance that an angle definition will be removed from it
+		/// </summary>
+		private int MutateActionRemAngle = 50;
 		/// <summary>
 		/// Root node of the genome
 		/// </summary>
-		protected Node Genome { get; set; }
+		public Node Genome { get; set; }
 		/// <summary>
 		/// Seed for random operations
 		/// </summary>
@@ -109,9 +126,12 @@ namespace WalkControl
 		/// </returns>
 		public IEnumerable<Node> Enumerate(Dictionary<int, int> State, Node node)
 		{
-		
+
 			if (node as Action != null)
 				yield return node as Action;
+
+			if (node as Conditional != null && State == null) //only enumerate conditionals if this is a non-state-dependent enumeration
+				yield return node as Conditional;
 
 			foreach (var c in node.Children)
 				foreach (var n in Enumerate(State, c))
@@ -120,7 +140,6 @@ namespace WalkControl
 			var cond = node as Conditional;
 			if (cond != null)
 			{
-
 				if (cond.Success != null && ((State != null && cond.Evaluate(State)) || State == null))
 					foreach (var n in Enumerate(State, cond.Success))
 						yield return n;
@@ -140,28 +159,42 @@ namespace WalkControl
 		{
 			var c = new Chromosome(Genome.Clone() as Node);
 			var nodes = c.Enumerate().ToList();
+			Trace.Write("Mutating: ");
 			foreach (var n in nodes)
 			{
 				if (Random.Next(100) < MutatePercentChance)
 				{
 					//can add a child
-					if (Random.Next(100) < MutateChanceAdd)
+					if (Random.Next(100) < MutateChanceAdd && nodes.Count < MutateMaxSize)
 					{
+						Trace.Write(" add ");
 						n.AddChild(CreateNode());
 					}
 					//can lose a child
-					if (Random.Next(100) < MutateChanceLose)
+					if ((Random.Next(100) < MutateChanceLose && nodes.Count > MutateMinSize) || nodes.Count > MutateMaxSize)
 					{
+						Trace.Write(" rem ");
 						if (n.Children.Count > 0)
 							n.RemoveChild(n.Children[Random.Next(n.Children.Count)]);
 					}
 					//can change an action (this is like add and lose) or a functor
 					if (Random.Next(100) < MutateChanceMutate)
 					{
-						n.GetType().GetMethod("Mutate").Invoke(n, null);
+						Trace.Write(" mut ");
+						var a = n as Action;
+						if (a != null)
+							Mutate(a);
+						else
+						{
+							var co = n as Conditional;
+							if (co != null)
+								Mutate(co);
+						}
+						//n.GetType().GetMethod("Mutate").Invoke(n, null);
 					}
 				}
 			}
+			Trace.WriteLine("");
 			return c;
 		}
 
@@ -175,6 +208,15 @@ namespace WalkControl
 			return new Action(d);
 		}
 
+		public Conditional CreateConditional()
+		{
+			return new Conditional(CreateConditionParameters());
+		}
+
+		public Action CreateAction()
+		{
+			return new Action(CreateActionParameters());
+		}
 		/// <summary>
 		/// Creates a random node
 		/// </summary>
@@ -184,16 +226,16 @@ namespace WalkControl
 			Node n;
 			if (Random.Next(100) < NewActionChance)
 			{
-				n = new Action(CreateAction());
+				n = new Action(CreateActionParameters());
 			}
 			else
 			{
-				n = new Conditional(CreateCondition());
+				n = new Conditional(CreateConditionParameters());
 			}
 			return n;
 		}
 
-		private Expression<Func<Dictionary<int, int>, bool>> CreateCondition()
+		private Expression<Func<Dictionary<int, int>, bool>> CreateConditionParameters()
 		{
 			//holy shit i'm using expression builders!
 			var state = Expression.Parameter(typeof(Dictionary<int, int>), "state");
@@ -216,7 +258,7 @@ namespace WalkControl
 			return expression;
 		}
 
-		private Dictionary<int, int> CreateAction()
+		private Dictionary<int, int> CreateActionParameters()
 		{
 			var a = new Dictionary<int, int>();
 			var servosToAdd = Random.Next(NewActionMaxServos);
@@ -225,21 +267,53 @@ namespace WalkControl
 			return a;
 		}
 
-		private Node Mutate(Action a)
+		/// <summary>
+		/// Mutate an action by changing (MutateActionAngle), adding (MutateActionAddAngle) or removing (MutateActionRemAngle) an angle definition
+		/// </summary>
+		/// <remarks>TODO: move this to the action node itself? unclear. right now node classes have no knowledge of genetic shit.</remarks>
+		/// <param name="a"></param>
+		/// <returns></returns>
+		public Node Mutate(Action a)
 		{
-			foreach (var i in a.Angles)
+			for (var i = 0; i < a.Angles.Count; i++)
 			{
 				if (Random.Next(100) < MutateActionAngle)
-					a.Angles[i.Key] = Random.Next(ServoMax);
+					a.Angles[i] = Random.Next(ServoMax);
+			}
+			if (Random.Next(100) < MutateActionAddAngle && a.Angles.Count < NumServos)
+			{
+				int angleIndex = 0;
+				do
+				{
+					angleIndex = Random.Next(NumServos);
+				} while (a.Angles.ContainsKey(angleIndex));
+				a.Angles[angleIndex] = Random.Next(ServoMax);
+			}
+			if (Random.Next(100) < MutateActionRemAngle && a.Angles.Count > 1)
+			{
+				int angleIndex = 0;
+				do
+				{
+					angleIndex = Random.Next(NumServos);
+				} while (!a.Angles.ContainsKey(angleIndex));
+				a.Angles.Remove(angleIndex);
 			}
 			return a;
 		}
 
-		private Node Mutate(Conditional c)
+		/// <summary>
+		/// Mutate a conditional by changing its functor. TODO: right now the condition expression is simply replaced. in the future, actually modify it.
+		/// </summary>
+		/// <param name="c"></param>
+		/// <returns></returns>
+		public Node Mutate(Conditional c)
 		{
 			var e = c.Condition;
 			//TODO: actually mutate
-			return c;
+			var newC = CreateConditional();
+			newC.Success = c.Success;
+			newC.Failure = c.Failure;
+			return newC;
 		}
 
 		/// <summary>
@@ -273,7 +347,7 @@ namespace WalkControl
 		public override string ToString()
 		{
 			//TODO: finish this
-			return String.Format("Chromosome {0} [ Nodes: {1}, Actions: {2}, Conditions: {3}, Avg Action Size: {4} ]", this.GetHashCode(), Enumerate().ToList().Count(), 0, 0, 0);
+			return String.Format("Chromosome {0} [ {1} ]", this.GetHashCode(), Enumerate().Select(n => n.GetType().Name.Substring(0, 1)).Aggregate((str, next) => str += next));
 		}
 
 		#region ICloneable Members

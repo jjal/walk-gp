@@ -13,3 +13,6 @@ WalkControl/obj/x86/Debug/WalkControl.exe
 WalkControl/obj/x86/Debug/WalkControl.Form1.resources
 WalkControl/obj/x86/Debug/WalkControl.pdb
 WalkControl/obj/x86/Debug/WalkControl.Properties.Resources.resources
+WalkControl/bin/Debug/.~lock.scores.csv#
+WalkControl/bin/Debug/scores.csv
+WalkControl/obj/x86/Debug/ResolveAssemblyReference.cache

@@ -141,7 +141,7 @@ namespace WalkControl
 			var n = new Action(new Dictionary<int, int>(Angles));
 			foreach (var c in Children)
 			{
-				c.AddChild(c.Clone() as Node);
+				n.AddChild(c.Clone() as Node);
 			}
 			return n;
 		}

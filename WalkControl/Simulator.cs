@@ -8,15 +8,35 @@ namespace WalkControl
 {
 	public class Simulator
 	{
+		/// <summary>
+		/// Size of the population to shoot for
+		/// </summary>
+		public const int PopulationSize = 30;
+		/// <summary>
+		/// % of the population that will be culled off the bottom
+		/// </summary>
+		public const int CullPercent = 50;
+		/// <summary>
+		/// % of chromosomes of a population that will be mutated to produce the next generation
+		/// </summary>
+		public const int MutationPercent = 50;
+		/// <summary>
+		/// % chance each node in the chromosome is mutated when chromosome is mutated
+		/// </summary>
+		public const int MutationSeverity = 50;
+		/// <summary>
+		/// ms that a particular phenotype is allowed to run its genotype
+		/// </summary>
+		private const int RunLength = 1000;
+		/// <summary>
+		/// Select crossover partners using weighted probability (based on score) or just randomly?
+		/// </summary>
+		private const bool UseWeightedPairings = true;
+
 		public Dictionary<int, Chromosome> Population { get; set; }
 		public Dictionary<int, int> Scores { get; set; }
-		public const int PopulationSize = 20;
-		public const int CullPercent = 25;
-		public const int MutationPercent = 90;
-		public const int MutationSeverity = 50;
-		public const int CrossoverPercent = 10;
+		private int NumGenerations  = 0;
 		protected Random Random;
-		private const int RunLength = 2000;
 		public Simulator()
 		{
 			Population = new Dictionary<int, Chromosome>();
@@ -26,6 +46,10 @@ namespace WalkControl
 			for (int i = 0; i < PopulationSize; i++)
 			{
 				var c = new Chromosome(Chromosome.CreateOriginAction());
+				var cond = c.CreateConditional();
+				cond.Success = c.CreateAction();
+				cond.Failure = c.CreateAction();
+				c.Genome.AddChild(cond);
 				Population.Add(c.GetHashCode(), c);
 			}
 			Trace.WriteLine("Sim simulator ready to go.");
@@ -34,9 +58,9 @@ namespace WalkControl
 		/// <summary>
 		/// Go through and implement all the evolutionary functions on the population 
 		/// </summary>
-		public void Tick()
+		public Dictionary<int,int> Tick()
 		{
-			Trace.WriteLine("Sim Tick... Population size: " + Population.Count);
+			Trace.WriteLine("Sim Tick Generation "+NumGenerations+++" Population size: " + Population.Count);
 			Scores.Clear();
 			//apply fitness measure to population
 			//foreach genome
@@ -44,7 +68,6 @@ namespace WalkControl
 			{
 				//apply fitness, store score
 				Scores[g.Key] = JudgeFitness(g.Value);
-				Trace.WriteLine(String.Format("Sim genome judged: " + g.Value + " - score: " + Scores[g.Key]));
 			}
 
 			//sort population by scores
@@ -54,7 +77,6 @@ namespace WalkControl
 			var best = Population.Values.First();
 			//select worst genome (for variety)
 			var worst = Population.Values.Last();
-			Trace.WriteLine("Sim culling population.. ");
 			//remove bottom CullPercent for the best and worst which we'll add back later
 			Population = Population.Take((Population.Count() * (100 - CullPercent) / 100) - 2).ToDictionary(kv => kv.Key, kv => kv.Value);
 			//add back the worst since it would have been culled
@@ -85,7 +107,8 @@ namespace WalkControl
 			for (var i = 0; NextGen.Count < (PopulationSize - 1); i = i < Population.Count ? i++ : 0)
 			{
 				var popEntry = Population.ElementAt(i);
-				var partner = Population[GetWeightedRandomPartner(Population,popEntry.Key)];
+				var partnerId = UseWeightedPairings ? GetWeightedRandomPartner(Population, popEntry.Key) : GetRandomPartner(Population, popEntry.Key);
+				var partner = Population[partnerId];
 				Trace.Write("[" + Scores[popEntry.Key] + "," + Scores[partner.GetHashCode()] + "] ");
 				//cross the genomes over and add the children to the next generation
 				var children = popEntry.Value.Crossover(partner);
@@ -105,6 +128,7 @@ namespace WalkControl
 				Population.Add(kv.Key,kv.Value);
 			Trace.WriteLine("Sim tick complete. Population size: " + Population.Count);
 			Trace.WriteLine("");
+			return Scores;
 		}
 
 		protected int GetWeightedRandomPartner(Dictionary<int,Chromosome> population, int principalId)
@@ -123,9 +147,24 @@ namespace WalkControl
 			return partnerId;
 		}
 
+		protected int GetRandomPartner(Dictionary<int, Chromosome> population, int principalId)
+		{
+			var partnerId = principalId;
+			var partnerIndex = 0;
+			do
+			{
+				partnerIndex = Random.Next(population.Count); // get a random partner
+				partnerId = population.ElementAt(partnerIndex).Key;
+				//if this random number check succeeds the partnering will go ahead
+				//probability is linear, inversely proportional to distance from spot 0 
+				//the bottom genome will never be selected as a second partner but will 
+				//get one turn at being the primary
+			} while (partnerId == principalId);
+			return partnerId;
+		}
+
 		protected int JudgeFitness(Chromosome g)
 		{
-			Trace.WriteLine("Judging fitness. Beginning run for Chromosome " + g.GetHashCode());
 			//run simulation
 			var robot = new Emulator();
 
@@ -133,13 +172,13 @@ namespace WalkControl
 
 			//judge score
 			var gyro = robot.GetGyroState();
-			Trace.WriteLine(String.Format("Judging fitness. Run ended. Gyro state: {0}, {1}, {2}.", gyro[0], gyro[1], gyro[2]));
 
 			var tilt = Math.Abs(gyro[0]) + Math.Abs(gyro[1]);
 			if (tilt < 1) //floor tilt at 1 so  there arn't DbZ issues
 				tilt = 1;
-			//we're trying to judge closeness to 0 for the x and y but height for z
-			var score = (100 / tilt) * gyro[2];
+			//we're trying to judge closeness to 0 for the x and y but height for z also encourage smalller programs
+			var score = (100 / tilt) * gyro[2] / g.Enumerate().Count();
+			Trace.WriteLine(String.Format("Run ended, judging fitness for " + g + " Gyro state: {0}, {1}, {2}. Score: {3}", gyro[0], gyro[1], gyro[2], score));
 			return score;
 		}
 	}

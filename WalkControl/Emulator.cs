@@ -30,7 +30,6 @@ namespace WalkControl
 
 		public void DoRun(Chromosome DNA, int RunLength)
 		{
-			Trace.WriteLine("Emu beginning run.");
 			ResetState();
 			var runStart = DateTime.Now.Ticks;
 			while ( DateTime.Now.Ticks - runStart < RunLength)
