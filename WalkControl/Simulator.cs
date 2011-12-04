@@ -166,7 +166,7 @@ namespace WalkControl
 		protected int JudgeFitness(Chromosome g)
 		{
 			//run simulation
-			var robot = new Emulator();
+			var robot = new Robot();
 
 			robot.DoRun(g, RunLength);
 
